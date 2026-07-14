@@ -1,0 +1,8 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.idea/
+personal_notes.txt
+assignment_brief.md

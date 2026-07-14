@@ -1,0 +1,8 @@
+pandas~=3.0.3
+Flask~=3.1.3
+SQLAlchemy~=2.0.51
+#Booktype~=1.5
+pymysql
+redis
+python-dotenv
+pytest

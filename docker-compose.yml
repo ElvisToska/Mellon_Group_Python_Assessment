@@ -1,0 +1,119 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "10"
+
+
+services:
+
+    mysql:
+        image: mysql:8.0
+        container_name: mysql
+        restart: unless-stopped
+        env_file:
+            - .env
+        environment:
+            MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+            MYSQL_DATABASE: ${DB_NAME}
+            MYSQL_USER: ${DB_USER}
+            MYSQL_PASSWORD: ${DB_PASS}
+        ports:
+            - "3306:3306"
+        volumes:
+            - mysql_data:/var/lib/mysql
+            - ./db/init:/docker-entrypoint-initdb.d:ro
+        healthcheck:
+            test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$${MYSQL_ROOT_PASSWORD} || exit 1"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+        logging: *default-logging
+
+
+    redis:
+        image: redis:7-alpine
+        container_name: redis
+        restart: unless-stopped
+        ports:
+            - "6379:6379"
+#        volumes:
+#            - redis_data:/data
+        healthcheck:
+            test: ["CMD", "redis-cli", "ping"]
+            interval: 10s
+            timeout: 5s
+            retries: 10
+        logging: *default-logging
+
+
+    tms-api:
+        build:
+            context: .
+            dockerfile: app/Dockerfile
+        container_name: tms-api
+        restart: unless-stopped
+        env_file:
+            - .env
+        environment:
+            DB_HOST: mysql
+            DB_PORT: 3306
+            REDIS_HOST: redis
+            REDIS_PORT: 6379
+        ports:
+            - "5000:5000"
+        depends_on:
+            mysql:
+                condition: service_healthy
+            redis:
+                condition: service_healthy
+        logging: *default-logging
+
+
+    decommission-cleanup:
+        build:
+            context: .
+            dockerfile: crontab/Dockerfile
+        container_name: decommission-cleanup
+        restart: unless-stopped
+        env_file:
+            - .env
+        environment:
+            DB_HOST: mysql
+            DB_PORT: 3306
+        depends_on:
+            mysql:
+              condition: service_healthy
+        logging: *default-logging
+
+
+    tests:
+        build:
+            context: .
+            dockerfile: app/Dockerfile
+        env_file:
+            - .env
+        environment:
+            DB_HOST: mysql
+            DB_PORT: 3306
+            REDIS_HOST: redis
+            REDIS_PORT: 6379
+        depends_on:
+            mysql:
+              condition: service_healthy
+            redis:
+              condition: service_healthy
+        volumes:
+            - ./app:/app/app:ro
+            - ./db:/app/db:ro
+            - ./crontab:/app/crontab:ro
+            - ./tests:/app/tests:ro
+        logging: *default-logging
+        command: pytest
+        profiles:
+            - tests
+
+
+volumes:
+    mysql_data:
+#    redis_data:
