@@ -18,50 +18,50 @@ The system currently contains these main runtime services:
 - `decommission-cleanup`: separate cron container for deleting expired decommissioned terminals.
 - `tests`: optional pytest service under the `tests` Compose profile.
 
-```mermaid
-flowchart LR
-    Client["API Client / Browser / Postman"] --> API["tms-api Flask API"]
-    API --> MySQL["mysql service<br/>MySQL 8.0"]
-    API --> Redis["redis service<br/>Redis 7"]
-    Cleanup["decommission-cleanup<br/>cron container"] --> MySQL
-    Tests["tests profile<br/>pytest"] --> API
-    Tests --> MySQL
-    Tests --> Redis
+```text
+API Client / Browser / Postman
+        |
+        v
+tms-api Flask API
+   |          |
+   v          v
+MySQL 8.0    Redis 7
+   |
+   v
+mysql_data volume
 
-    MySQL --> MySQLVolume["mysql_data volume"]
-    API --> Logs["stdout logs<br/>Docker logging driver"]
-    Cleanup --> Logs
+decommission-cleanup cron container -> MySQL 8.0
+tests profile -> tms-api, MySQL 8.0, Redis 7
+tms-api and decommission-cleanup -> stdout logs -> Docker logging driver
 ```
 
 ## Source Layout
 
-```mermaid
-flowchart TD
-    Root["final_assessment/"]
-    Root --> App["app/"]
-    Root --> DB["db/"]
-    Root --> Cron["crontab/"]
-    Root --> Tests["tests/"]
-    Root --> Compose["docker-compose.yml"]
-    Root --> EnvExample[".env.example"]
-    Root --> Docs["DOCUMENTATION.md"]
-
-    App --> Main["main.py<br/>Flask app factory"]
-    App --> Routes["routes/"]
-    Routes --> Health["health.py"]
-    Routes --> Terminals["terminals.py"]
-    Routes --> Templates["templates.py"]
-    Routes --> Statistics["statistics.py"]
-    Routes --> Reports["reports.py"]
-
-    DB --> Conn["db_connection.py"]
-    DB --> Cache["cache.py"]
-    DB --> SchemaUtils["schema_utils.py"]
-    DB --> Init["init/01_schema.sql<br/>init/02_seed.sql"]
-
-    Cron --> CronScript["cleanup_decommission.py"]
-    Cron --> CronFile["clear_decommission.cron"]
-    Cron --> CronDockerfile["Dockerfile"]
+```text
+final_assessment/
+|-- app/
+|   |-- main.py
+|   `-- routes/
+|       |-- health.py
+|       |-- terminals.py
+|       |-- templates.py
+|       |-- statistics.py
+|       `-- reports.py
+|-- db/
+|   |-- db_connection.py
+|   |-- cache.py
+|   |-- schema_utils.py
+|   `-- init/
+|       |-- 01_schema.sql
+|       `-- 02_seed.sql
+|-- crontab/
+|   |-- cleanup_decommission.py
+|   |-- clear_decommission.cron
+|   `-- Dockerfile
+|-- tests/
+|-- docker-compose.yml
+|-- .env.example
+`-- DOCUMENTATION.md
 ```
 
 ## Application Startup
@@ -75,46 +75,43 @@ Important startup behavior:
 - Unicode JSON output is enabled with `app.json.ensure_ascii = False`.
 - Route files are registered as Flask Blueprints.
 
-```mermaid
-sequenceDiagram
-    participant Docker as Docker
-    participant API as app.main
-    participant Flask as Flask App
-    participant Routes as Blueprints
-
-    Docker->>API: python -m app.main
-    API->>API: configure logging to stdout
-    API->>Flask: create Flask app
-    API->>Flask: ensure_ascii = False
-    API->>Flask: sort_keys = False
-    API->>Routes: register health_bp
-    API->>Routes: register terminals_bp
-    API->>Routes: register templates_bp
-    API->>Routes: register statistics_bp
-    API->>Routes: register reports_bp
-    API->>Flask: run on 0.0.0.0:5000
+```text
+Docker starts tms-api
+        |
+        v
+python -m app.main
+        |
+        v
+configure logging to stdout
+        |
+        v
+create Flask app
+        |
+        v
+set ensure_ascii = False and sort_keys = False
+        |
+        v
+register health, terminals, templates, statistics, reports blueprints
+        |
+        v
+run Flask on 0.0.0.0:5000
 ```
 
 ## Docker Runtime
 
 The project is started with Docker Compose. The API waits for MySQL and Redis healthchecks before starting.
 
-```mermaid
-flowchart TD
-    Compose["docker compose up"] --> MySQL["mysql"]
-    Compose --> Redis["redis"]
-
-    MySQL --> MySQLHealth["mysql healthcheck"]
-    Redis --> RedisHealth["redis-cli ping healthcheck"]
-
-    MySQLHealth --> API["tms-api starts after mysql healthy"]
-    RedisHealth --> API
-
-    MySQLHealth --> Cleanup["decommission-cleanup starts after mysql healthy"]
-
-    TestsProfile["docker compose --profile tests run tests"] --> Tests["tests service"]
-    Tests --> MySQLHealth
-    Tests --> RedisHealth
+```text
+docker compose up
+|-- mysql
+|   `-- mysql healthcheck
+|       |-- tms-api waits for mysql
+|       `-- decommission-cleanup waits for mysql
+|-- redis
+|   `-- redis-cli ping healthcheck
+|       `-- tms-api waits for redis
+`-- optional tests profile
+    `-- tests service waits for mysql and redis
 ```
 
 ### Service Responsibilities
@@ -129,11 +126,10 @@ flowchart TD
 
 ### Docker Volumes
 
-```mermaid
-flowchart LR
-    MySQL["mysql container"] --> MySQLData["mysql_data volume<br/>persistent database files"]
-    Redis["redis container"] -. optional/commented .-> RedisData["redis_data volume<br/>currently not active"]
-```
+| Container | Volume | Status | Purpose |
+|---|---|---|---|
+| `mysql` | `mysql_data:/var/lib/mysql` | Active | Keeps database files after restarts |
+| `redis` | `redis_data:/data` | Commented out | Optional cache persistence, currently not active |
 
 The current Compose file persists MySQL data through `mysql_data`.
 
@@ -159,7 +155,7 @@ logging: *default-logging
 
 This means Docker rotates container logs when each log file reaches `10MB`, keeping up to `10` files per container. The application still writes logs to `stdout`; Docker handles the rotation.
 
-```mermaid
+```text
 flowchart LR
     AppLogs["logger.info / logger.error"] --> Stdout["container stdout"]
     Stdout --> DockerDriver["Docker json-file driver"]
@@ -181,7 +177,7 @@ The application adds/ensures two additional structures at runtime:
 - `terminals.updated_on`
 - `decommission_queue`
 
-```mermaid
+```text
 flowchart TD
     Merchants["merchants<br/>id PK<br/>mid UNIQUE<br/>name"]
     Templates["templates<br/>id PK<br/>template_name<br/>hardware_model<br/>hardware_family"]
@@ -200,7 +196,7 @@ flowchart TD
 - `ensure_updated_on_column(conn)`: checks `INFORMATION_SCHEMA.COLUMNS` before running `ALTER TABLE`.
 - `ensure_decommission_queue_table(conn)`: uses `CREATE TABLE IF NOT EXISTS`.
 
-```mermaid
+```text
 flowchart TD
     Start["Write endpoint starts"] --> Begin["Open database transaction"]
     Begin --> EnsureUpdated["ensure_updated_on_column"]
@@ -211,7 +207,7 @@ flowchart TD
     Skip --> Continue
 ```
 
-```mermaid
+```text
 flowchart TD
     Start["A5 decommission or list decommissioned"] --> EnsureQueue["ensure_decommission_queue_table"]
     EnsureQueue --> Create["CREATE TABLE IF NOT EXISTS decommission_queue"]
@@ -220,36 +216,26 @@ flowchart TD
 
 ## API Endpoint Map
 
-```mermaid
-flowchart TD
-    API["tms-api"]
-
-    API --> Health["GET /health"]
-
-    API --> Terminals["Terminals"]
-    Terminals --> A1["GET /terminals"]
-    Terminals --> A1Filter["GET /terminals?enabled=true|false"]
-    Terminals --> A2["GET /terminals/&lt;tid&gt;"]
-    Terminals --> A3["GET /terminals/flagged"]
-    Terminals --> A4Flag["POST /terminals/&lt;tid&gt;/flag"]
-    Terminals --> A4Unflag["POST /terminals/&lt;tid&gt;/unflag"]
-    Terminals --> A5Post["POST /terminals/&lt;tid&gt;/decommission"]
-    Terminals --> A5Get["GET /terminals/decommissioned"]
-    Terminals --> B3["POST /terminals/from-template"]
-
-    API --> Templates["Templates"]
-    Templates --> B1["GET /templates"]
-    Templates --> B2["GET /templates/&lt;id&gt;"]
-
-    API --> Statistics["Statistics"]
-    Statistics --> D1["GET /statistics/by-hardware"]
-    Statistics --> D2["GET /statistics/by-state"]
-    Statistics --> D3["GET /statistics/by-hardware-family"]
-    Statistics --> D4["GET /statistics/idle-distribution"]
-
-    API --> Reports["Reports"]
-    Reports --> CSV["GET /reports/terminals_basic.csv"]
-```
+| Group | Method | Path |
+|---|---|---|
+| Health | `GET` | `/health` |
+| Terminals | `GET` | `/terminals` |
+| Terminals | `GET` | `/terminals?enabled=true` |
+| Terminals | `GET` | `/terminals?enabled=false` |
+| Terminals | `GET` | `/terminals/<tid>` |
+| Terminals | `GET` | `/terminals/flagged` |
+| Terminals | `POST` | `/terminals/<tid>/flag` |
+| Terminals | `POST` | `/terminals/<tid>/unflag` |
+| Terminals | `POST` | `/terminals/<tid>/decommission` |
+| Terminals | `GET` | `/terminals/decommissioned` |
+| Terminals | `POST` | `/terminals/from-template` |
+| Templates | `GET` | `/templates` |
+| Templates | `GET` | `/templates/<id>` |
+| Statistics | `GET` | `/statistics/by-hardware` |
+| Statistics | `GET` | `/statistics/by-state` |
+| Statistics | `GET` | `/statistics/by-hardware-family` |
+| Statistics | `GET` | `/statistics/idle-distribution` |
+| Reports | `GET` | `/reports/terminals_basic.csv` |
 
 ## Endpoint Reference
 
@@ -322,26 +308,18 @@ tid,mid,hardware_model,software_version,enabled,last_call
 
 The application uses a cache-aside pattern.
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant API
-    participant Redis
-    participant MySQL
-
-    Client->>API: GET /terminals
-    API->>Redis: cache_get("terminals:list:None")
-    alt Cache HIT
-        Redis-->>API: cached JSON
-        API-->>Client: cached response
-    else Cache MISS
-        Redis-->>API: None
-        API->>MySQL: SELECT terminals
-        MySQL-->>API: rows
-        API->>API: format JSON
-        API->>Redis: cache_set(..., ttl=30)
-        API-->>Client: fresh response
-    end
+```text
+GET request
+    |
+    v
+API checks Redis cache
+    |
+    |-- Cache HIT  -> return cached JSON
+    |
+    `-- Cache MISS -> query MySQL
+                    -> format JSON
+                    -> save response in Redis with TTL
+                    -> return fresh JSON
 ```
 
 ### Cache Keys
@@ -370,7 +348,7 @@ sequenceDiagram
 
 Every write endpoint clears the full Redis database using `cache_clear_all()`.
 
-```mermaid
+```text
 sequenceDiagram
     participant Client
     participant API
@@ -390,7 +368,7 @@ sequenceDiagram
 
 Redis failures are handled inside `db/cache.py`.
 
-```mermaid
+```text
 flowchart TD
     CacheOp["cache_get/cache_set/cache_clear_all"] --> Try["try Redis operation"]
     Try -->|Success| Normal["Normal cache behavior"]
@@ -404,98 +382,145 @@ This means the API should not crash if Redis is unavailable. It simply behaves a
 
 ### A1: List Terminals
 
-```mermaid
-flowchart TD
-    Request["GET /terminals<br/>optional enabled query"] --> Cache["Check Redis cache"]
-    Cache -->|Hit| ReturnCache["Return cached JSON"]
-    Cache -->|Miss| Validate["Validate enabled=true/false if present"]
-    Validate -->|Invalid| BadRequest["400 invalid enabled value"]
-    Validate -->|Valid| Query["Query terminals joined with merchants"]
-    Query --> Format["Format enabled as boolean<br/>Format last_call as ISO string"]
-    Format --> Store["Store in Redis TTL 30s"]
-    Store --> Response["Return JSON array"]
+```text
+GET /terminals
+    |
+    v
+check Redis cache
+    |
+    |-- HIT  -> return cached JSON
+    |
+    `-- MISS -> validate enabled query if it exists
+              -> invalid value returns 400
+              -> query terminals joined with merchants
+              -> format enabled as boolean
+              -> format last_call as YYYY-MM-DDTHH:MM:SS
+              -> store in Redis for 30 seconds
+              -> return JSON array
 ```
 
 ### A4: Flag Terminal
 
-```mermaid
-flowchart TD
-    Request["POST /terminals/&lt;tid&gt;/flag"] --> Body["Read JSON body"]
-    Body --> Missing["scenario_number missing?"]
-    Missing -->|Yes| Error400["400 scenario_number is required"]
-    Missing -->|No| Empty["scenario_number empty?"]
-    Empty -->|Yes| Error400Empty["400 scenario_number cannot be empty"]
-    Empty -->|No| Tx["Begin transaction"]
-    Tx --> Ensure["Ensure updated_on column"]
-    Ensure --> Select["SELECT scenario_number FOR UPDATE"]
-    Select --> NotFound["Terminal missing?"]
-    NotFound -->|Yes| Error404["404 Terminal was not found"]
-    NotFound -->|No| Same["Same scenario_number?"]
-    Same -->|Yes| Conflict["409 already flagged"]
-    Same -->|No| Update["UPDATE scenario_number and updated_on"]
-    Update --> ClearCache["Clear Redis cache"]
-    ClearCache --> Success["200 Terminal flagged successfully"]
+```text
+POST /terminals/<tid>/flag
+    |
+    v
+read JSON body
+    |
+    |-- missing scenario_number -> 400
+    |-- empty scenario_number   -> 400
+    |
+    v
+begin transaction
+    |
+    v
+ensure updated_on column
+    |
+    v
+SELECT scenario_number FOR UPDATE
+    |
+    |-- terminal missing       -> 404
+    |-- same scenario_number   -> 409
+    |
+    v
+UPDATE scenario_number and updated_on
+    |
+    v
+clear Redis cache
+    |
+    v
+200 Terminal flagged successfully
 ```
 
 ### A4: Unflag Terminal
 
-```mermaid
-flowchart TD
-    Request["POST /terminals/&lt;tid&gt;/unflag"] --> Tx["Begin transaction"]
-    Tx --> Ensure["Ensure updated_on column"]
-    Ensure --> Select["SELECT scenario_number FOR UPDATE"]
-    Select --> Missing["Terminal exists?"]
-    Missing -->|No| Error404["404 Terminal not found"]
-    Missing -->|Yes| Already["scenario_number is NULL, empty, or '0'?"]
-    Already -->|Yes| Conflict["409 already unflagged"]
-    Already -->|No| Update["Set scenario_number='0'<br/>Set updated_on=now"]
-    Update --> ClearCache["Clear Redis cache"]
-    ClearCache --> Success["200 Terminal unflagged successfully"]
+```text
+POST /terminals/<tid>/unflag
+    |
+    v
+begin transaction
+    |
+    v
+ensure updated_on column
+    |
+    v
+SELECT scenario_number FOR UPDATE
+    |
+    |-- terminal missing                         -> 404
+    |-- scenario_number NULL, empty, or "0"      -> 409
+    |
+    v
+set scenario_number = "0" and updated_on = now
+    |
+    v
+clear Redis cache
+    |
+    v
+200 Terminal unflagged successfully
 ```
 
 ### A5: Decommission Terminal
 
-```mermaid
-flowchart LR
-    Start["Start"] --> Active["Active terminal<br/>enabled = 1"]
-    Active -->|"POST /terminals/{tid}/decommission"| Decommissioned["Decommissioned<br/>enabled = 0"]
-    Decommissioned --> Queued["Queued in decommission_queue"]
-    Queued -->|"cleanup cron after delete_after"| Deleted["Deleted from queue and terminals"]
-    Active -->|"TID missing"| NotFound["404 Terminal not found"]
-    Decommissioned -->|"already disabled"| Conflict["409 already decommissioned"]
+```text
+Active terminal
+enabled = 1
+    |
+    | POST /terminals/<tid>/decommission
+    v
+Decommissioned terminal
+enabled = 0
+    |
+    v
+Queued in decommission_queue
+    |
+    | cleanup cron runs after delete_after
+    v
+Deleted from queue and terminals
+
+Error paths:
+- missing TID -> 404 Terminal not found
+- already disabled -> 409 Terminal already decommissioned
 ```
 
-```mermaid
-sequenceDiagram
-    participant Client
-    participant API
-    participant MySQL
-    participant Redis
-
-    Client->>API: POST /terminals/T0101001/decommission
-    API->>MySQL: BEGIN
-    API->>MySQL: ensure updated_on column
-    API->>MySQL: ensure decommission_queue table
-    API->>MySQL: SELECT enabled FOR UPDATE
-    alt Terminal not found
-        API-->>Client: 404 Terminal not found
-    else Already disabled
-        API-->>Client: 409 Terminal already decommissioned
-    else Active terminal
-        API->>MySQL: UPDATE terminals SET enabled=0, updated_on=now
-        API->>MySQL: INSERT INTO decommission_queue
-        API->>MySQL: SELECT queued data
-        API->>MySQL: COMMIT
-        API->>Redis: cache_clear_all()
-        API-->>Client: 200 queued_on/delete_after
-    end
+```text
+POST /terminals/<tid>/decommission
+    |
+    v
+BEGIN transaction
+    |
+    v
+ensure updated_on column
+    |
+    v
+ensure decommission_queue table
+    |
+    v
+SELECT enabled FOR UPDATE
+    |
+    |-- terminal not found -> 404
+    |-- already disabled  -> 409
+    |
+    v
+UPDATE terminals SET enabled = 0, updated_on = now
+    |
+    v
+INSERT INTO decommission_queue with queued_on and delete_after
+    |
+    v
+COMMIT transaction
+    |
+    v
+clear Redis cache
+    |
+    v
+return queued_on and delete_after
 ```
 
 ## Feature B - Templates and Create From Template
 
 ### Template Endpoints
 
-```mermaid
+```text
 flowchart TD
     Templates["Templates API"] --> List["GET /templates"]
     Templates --> Detail["GET /templates/&lt;id&gt;"]
@@ -509,7 +534,7 @@ flowchart TD
 
 The create-from-template endpoint runs inside a single transaction.
 
-```mermaid
+```text
 sequenceDiagram
     participant Client
     participant API
@@ -540,7 +565,7 @@ sequenceDiagram
 
 TID generation:
 
-```mermaid
+```text
 flowchart TD
     MID["mid = MID000101"] --> Prefix["prefix = T + last 4 chars<br/>T0101"]
     Last["last tid for merchant<br/>T0101006"] --> Suffix["suffix = 006"]
@@ -553,7 +578,7 @@ flowchart TD
 
 All statistics endpoints follow this pattern:
 
-```mermaid
+```text
 flowchart TD
     Request["GET /statistics/..."] --> Cache["Check Redis cache"]
     Cache -->|Hit| Cached["Return cached JSON"]
@@ -567,7 +592,7 @@ flowchart TD
 
 ### D1: By Hardware
 
-```mermaid
+```text
 flowchart LR
     SQL["SELECT hardware_model FROM terminals"] --> DF["DataFrame"]
     DF --> Group["groupby('hardware_model').size()"]
@@ -576,7 +601,7 @@ flowchart LR
 
 ### D2: By State
 
-```mermaid
+```text
 flowchart LR
     SQL["SELECT enabled FROM terminals"] --> DF["DataFrame"]
     DF --> Counts["value_counts()"]
@@ -588,7 +613,7 @@ flowchart LR
 
 ### D3: By Hardware Family
 
-```mermaid
+```text
 flowchart LR
     SQL["SELECT hardware_family FROM terminals"] --> DF["DataFrame"]
     DF --> Group["groupby('hardware_family').size()"]
@@ -597,7 +622,7 @@ flowchart LR
 
 ### D4: Idle Distribution
 
-```mermaid
+```text
 flowchart TD
     SQL["SELECT last_call_stamp FROM terminals"] --> DF["DataFrame"]
     DF --> Days["days_since_last_call = now - last_call_stamp"]
@@ -610,17 +635,17 @@ Idle buckets:
 
 | Bucket | Meaning |
 |---|---|
-| `Σήμερα` | Last call today |
-| `1-7 μέρες` | Last call 1 to 7 days ago |
-| `8-30 μέρες` | Last call 8 to 30 days ago |
-| `31-90 μέρες` | Last call 31 to 90 days ago |
-| `90+ μέρες` | Last call more than 90 days ago |
+| `Ξ£Ξ®ΞΌΞµΟΞ±` | Last call today |
+| `1-7 ΞΌΞ­ΟΞµΟ‚` | Last call 1 to 7 days ago |
+| `8-30 ΞΌΞ­ΟΞµΟ‚` | Last call 8 to 30 days ago |
+| `31-90 ΞΌΞ­ΟΞµΟ‚` | Last call 31 to 90 days ago |
+| `90+ ΞΌΞ­ΟΞµΟ‚` | Last call more than 90 days ago |
 
 ## CSV Report
 
 The CSV report endpoint creates a CSV response dynamically.
 
-```mermaid
+```text
 sequenceDiagram
     participant Client
     participant API
@@ -652,7 +677,7 @@ Cron schedule:
 
 This runs every day at `02:00`.
 
-```mermaid
+```text
 sequenceDiagram
     participant Cron as cron daemon
     participant Script as cleanup_decommission.py
@@ -676,7 +701,7 @@ sequenceDiagram
 
 The delete order matters:
 
-```mermaid
+```text
 flowchart LR
     Queue["decommission_queue<br/>FK references terminals.tid"] --> Terminal["terminals"]
     DeleteQueue["1. Delete queue row first"] --> DeleteTerminal["2. Delete terminal row second"]
@@ -700,7 +725,7 @@ Example:
 2026-07-14 10:02:59,305 [INFO    ] app.routes.statistics - Fetched 68 rows from the database for hardware model statistics.
 ```
 
-```mermaid
+```text
 flowchart TD
     Code["logger.info / logger.error"] --> PythonLogging["Python logging"]
     PythonLogging --> Stdout["stdout"]
@@ -736,7 +761,7 @@ Expected user-facing errors include:
 | Already decommissioned | `409` |
 | Wrong HTTP method | `405` |
 
-```mermaid
+```text
 flowchart TD
     Request["Request"] --> Validate["Validate input"]
     Validate -->|Bad input| ClientError["400 / 404 / 409"]
@@ -768,7 +793,7 @@ There are two kinds of health checks:
 - Application HTTP health endpoint: `GET /health`.
 - Docker Compose service healthchecks for MySQL and Redis.
 
-```mermaid
+```text
 flowchart TD
     Client["GET /health"] --> API["Flask health endpoint"]
     API --> DBCheck["SELECT 1 against MySQL"]
@@ -783,7 +808,7 @@ flowchart TD
 
 The project has pytest coverage for route registration, cache behavior, cron cleanup, endpoint behavior, route validation, schema utilities, and statistics behavior.
 
-```mermaid
+```text
 flowchart TD
     Tests["pytest suite"] --> AppReg["test_app_registration.py"]
     Tests --> CacheTests["test_cache.py"]
@@ -796,7 +821,7 @@ flowchart TD
 
 The Docker tests service is enabled only when the `tests` profile is used.
 
-```mermaid
+```text
 sequenceDiagram
     participant User
     participant Compose
@@ -821,7 +846,7 @@ Current verified result after the latest statistics changes:
 
 ### Normal Terminal Read
 
-```mermaid
+```text
 flowchart LR
     Client --> API
     API --> RedisCheck["Check Redis"]
@@ -834,7 +859,7 @@ flowchart LR
 
 ### Terminal Upgrade Flag Lifecycle
 
-```mermaid
+```text
 flowchart LR
     Unflagged["Unflagged<br/>scenario_number is NULL, empty, or '0'"]
     Flagged["Flagged<br/>scenario_number has upgrade value"]
@@ -845,7 +870,7 @@ flowchart LR
 
 ### Decommission Lifecycle
 
-```mermaid
+```text
 flowchart LR
     Day0["Day 0<br/>Terminal is active"] --> Decom["POST /terminals/{tid}/decommission"]
     Decom --> Disabled["enabled set to 0"]
@@ -873,7 +898,7 @@ docker compose logs --tail=100 tms-api
 
 Expected cache check:
 
-```mermaid
+```text
 sequenceDiagram
     participant User
     participant API
@@ -918,7 +943,7 @@ docker compose logs -f decommission-cleanup
 
 Redis is used as a cache layer, not as the source of truth. If Redis restarts and loses cache data, the API can safely read from MySQL and repopulate Redis.
 
-```mermaid
+```text
 flowchart LR
     RedisLost["Redis cache lost"] --> API["API receives GET"]
     API --> Miss["Cache MISS"]
@@ -946,7 +971,7 @@ Full invalidation is simpler and safer for this project.
 
 ## Current Implementation Summary
 
-```mermaid
+```text
 flowchart TD
     TMS["TMS"]
     TMS --> Flask["Flask API"]
@@ -984,3 +1009,4 @@ flowchart TD
     Tests --> Pytest["Pytest"]
     Tests --> DockerProfile["Docker profile"]
 ```
+
