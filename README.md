@@ -300,7 +300,7 @@ decommission-cleanup
 Το cron τρέχει κάθε μέρα στις `02:00`:
 
 ```cron
-0 2 * * * cd /app && /usr/local/bin/python /app/crontab/cleanup_decommission.py >> /proc/1/fd/1 2>> /proc/1/fd/2
+0 2 * * * . /etc/environment && cd /app && PYTHONPATH=/app /usr/local/bin/python /app/crontab/cleanup_decommission.py >> /proc/1/fd/1 2>> /proc/1/fd/2
 ```
 
 Το `>> /proc/1/fd/1` στέλνει το κανονικό output του script στο `stdout` του container.

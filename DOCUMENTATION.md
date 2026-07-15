@@ -182,46 +182,15 @@ The application adds/ensures two additional structures at runtime:
 - `decommission_queue`
 
 ```mermaid
-erDiagram
-    merchants {
-        int id PK
-        varchar mid UK
-        varchar name
-    }
+flowchart TD
+    Merchants["merchants<br/>id PK<br/>mid UNIQUE<br/>name"]
+    Templates["templates<br/>id PK<br/>template_name<br/>hardware_model<br/>hardware_family"]
+    Terminals["terminals<br/>id PK<br/>tid UNIQUE<br/>merchant_id FK<br/>template_id FK<br/>serial_number<br/>software_version<br/>sdk_version<br/>scenario_number<br/>hardware_model<br/>hardware_family<br/>enabled<br/>created_on<br/>last_call_stamp<br/>updated_on"]
+    Queue["decommission_queue<br/>tid PK and FK<br/>queued_on<br/>delete_after"]
 
-    templates {
-        int id PK
-        varchar template_name
-        varchar hardware_model
-        varchar hardware_family
-    }
-
-    terminals {
-        int id PK
-        varchar tid UK
-        int merchant_id FK
-        int template_id FK
-        varchar serial_number
-        varchar software_version
-        varchar sdk_version
-        varchar scenario_number
-        varchar hardware_model
-        varchar hardware_family
-        tinyint enabled
-        datetime created_on
-        datetime last_call_stamp
-        datetime updated_on
-    }
-
-    decommission_queue {
-        varchar tid PK, FK
-        datetime queued_on
-        datetime delete_after
-    }
-
-    merchants ||--o{ terminals : owns
-    templates ||--o{ terminals : creates
-    terminals ||--o| decommission_queue : queued_for_deletion
+    Merchants -->|"one merchant owns many terminals"| Terminals
+    Templates -->|"one template can create many terminals"| Terminals
+    Terminals -->|"terminal can be queued for deletion"| Queue
 ```
 
 ### Runtime Schema Safety
@@ -487,15 +456,13 @@ flowchart TD
 ### A5: Decommission Terminal
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Active: enabled = 1
-    Active --> Decommissioned: POST /terminals/&lt;tid&gt;/decommission
-    Decommissioned --> Queued: insert into decommission_queue
-    Queued --> Deleted: cleanup cron after delete_after
-    Deleted --> [*]
-
-    Active --> Active: 404 if TID missing
-    Decommissioned --> Decommissioned: 409 if already disabled
+flowchart LR
+    Start["Start"] --> Active["Active terminal<br/>enabled = 1"]
+    Active -->|"POST /terminals/{tid}/decommission"| Decommissioned["Decommissioned<br/>enabled = 0"]
+    Decommissioned --> Queued["Queued in decommission_queue"]
+    Queued -->|"cleanup cron after delete_after"| Deleted["Deleted from queue and terminals"]
+    Active -->|"TID missing"| NotFound["404 Terminal not found"]
+    Decommissioned -->|"already disabled"| Conflict["409 already decommissioned"]
 ```
 
 ```mermaid
@@ -680,7 +647,7 @@ The bonus cleanup runs in a separate container.
 Cron schedule:
 
 ```cron
-0 2 * * * cd /app && /usr/local/bin/python /app/crontab/cleanup_decommission.py >> /proc/1/fd/1 2>> /proc/1/fd/2
+0 2 * * * . /etc/environment && cd /app && PYTHONPATH=/app /usr/local/bin/python /app/crontab/cleanup_decommission.py >> /proc/1/fd/1 2>> /proc/1/fd/2
 ```
 
 This runs every day at `02:00`.
@@ -868,11 +835,12 @@ flowchart LR
 ### Terminal Upgrade Flag Lifecycle
 
 ```mermaid
-stateDiagram-v2
-    [*] --> Unflagged: scenario_number NULL/empty/'0'
-    Unflagged --> Flagged: POST /flag
-    Flagged --> Flagged: POST /flag with different scenario_number
-    Flagged --> Unflagged: POST /unflag
+flowchart LR
+    Unflagged["Unflagged<br/>scenario_number is NULL, empty, or '0'"]
+    Flagged["Flagged<br/>scenario_number has upgrade value"]
+    Unflagged -->|"POST /flag"| Flagged
+    Flagged -->|"POST /flag with different scenario_number"| Flagged
+    Flagged -->|"POST /unflag"| Unflagged
 ```
 
 ### Decommission Lifecycle

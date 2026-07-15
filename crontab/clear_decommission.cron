@@ -1,1 +1,9 @@
-0 2 * * * cd /app && /usr/local/bin/python /app/crontab/cleanup_decommission.py >> /proc/1/fd/1 2>> /proc/1/fd/2
+# 0 2 * * *                             runs once every day at 02:00.
+# . /etc/environment                    loads the Docker environment variables for cron.
+# cd /app                               moves to the application folder inside the container.
+# PYTHONPATH=/app                       lets Python import project folders like db and crontab.
+# /usr/local/bin/python                 runs the cleanup script with the container Python.
+# /app/crontab/cleanup_decommission.py  removes expired decommissioned terminals.
+# >> /proc/1/fd/1                       sends normal logs to the container stdout.
+# 2>> /proc/1/fd/2                      sends error logs to the container stderr.
+0 2 * * * . /etc/environment && cd /app && PYTHONPATH=/app /usr/local/bin/python /app/crontab/cleanup_decommission.py >> /proc/1/fd/1 2>> /proc/1/fd/2

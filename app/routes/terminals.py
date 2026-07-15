@@ -116,7 +116,13 @@ def get_terminal(tid):
         return jsonify({"error": "database error"}), 500
 
     result = dict(terminal)
-    cache_set(cache_key, dict(terminal), ttl=30)  # Cache for 30 seconds
+
+    # Convert datetime values before returning/caching so the API always uses the same date format.
+    for key, value in result.items():
+        if isinstance(value, datetime):
+            result[key] = value.strftime("%Y-%m-%dT%H:%M:%S")
+
+    cache_set(cache_key, result, ttl=30)  # Cache for 30 seconds
     return jsonify(result)
 
 
@@ -156,7 +162,17 @@ def get_flagged_terminals():
         logger.error(f"Error fetching flagged terminals: {e}")
         return jsonify({"error": "database error"}), 500
 
-    result = [dict(row) for row in rows]
+    result = []
+    for row in rows:
+        terminal = dict(row)
+
+        # Convert datetime values before returning/caching so the API always uses the same date format.
+        for key, value in terminal.items():
+            if isinstance(value, datetime):
+                terminal[key] = value.strftime("%Y-%m-%dT%H:%M:%S")
+
+        result.append(terminal)
+
     cache_set(cache_key, result, ttl=30)  # Cache for 30 seconds
     return jsonify(result)
 

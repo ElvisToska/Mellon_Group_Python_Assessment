@@ -165,6 +165,36 @@ def test_get_terminal_returns_404_when_tid_does_not_exist(monkeypatch):
     assert body["error"] == "Terminal not found"
 
 
+def test_get_terminal_success_formats_datetime_and_sets_cache(monkeypatch):
+    app = make_test_app()
+    terminal_row = {
+        "id": 1,
+        "tid": "T0101001",
+        "created_on": datetime(2026, 7, 1, 10, 0, 0),
+        "last_call_stamp": datetime(2026, 7, 2, 11, 0, 0),
+        "updated_on": datetime(2026, 7, 3, 12, 0, 0),
+    }
+    cached_payloads = []
+    conn = FakeConn(lambda sql, params: FakeResult(first_row=terminal_row))
+
+    monkeypatch.setattr(terminals, "engine", FakeEngine(conn))
+    monkeypatch.setattr(terminals, "cache_get", lambda key: None)
+    monkeypatch.setattr(
+        terminals,
+        "cache_set",
+        lambda key, value, ttl=30: cached_payloads.append((key, value, ttl)),
+    )
+
+    with app.test_request_context("/terminals/T0101001"):
+        response = terminals.get_terminal("T0101001")
+
+    body = response.get_json()
+    assert body["created_on"] == "2026-07-01T10:00:00"
+    assert body["last_call_stamp"] == "2026-07-02T11:00:00"
+    assert body["updated_on"] == "2026-07-03T12:00:00"
+    assert cached_payloads[0][1]["created_on"] == "2026-07-01T10:00:00"
+
+
 def test_flag_terminal_success_updates_row_and_clears_cache(monkeypatch):
     app = make_test_app()
     cleared = []
@@ -271,6 +301,23 @@ def test_wrong_method_returns_generic_405():
 
     assert response.status_code == 405
     assert body["error"] == "method not allowed"
+    assert body["method_used"] == "POST"
+    assert body["allowed_methods"] == ["GET"]
+
+
+def test_static_route_wrong_method_is_not_handled_as_tid():
+    from app.main import create_app
+
+    app = create_app()
+    client = app.test_client()
+
+    response = client.get("/terminals/from-template")
+    body = response.get_json()
+
+    assert response.status_code == 405
+    assert body["error"] == "method not allowed"
+    assert body["method_used"] == "GET"
+    assert body["allowed_methods"] == ["POST"]
 
 
 def test_decommission_terminal_success_queues_terminal_and_clears_cache(monkeypatch):

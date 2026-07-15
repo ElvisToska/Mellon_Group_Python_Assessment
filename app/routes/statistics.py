@@ -202,8 +202,8 @@ def statistics_idle_distribution():
                              bins=bins,
                              labels=labels)
 
-        # Group by range and count
-        stats = df.groupby('range').size().reset_index(name='count')
+        # Group by range and count. observed=False keeps buckets with 0 terminals too.
+        stats = df.groupby('range', observed=False).size().reset_index(name='count')
         logger.info(f"Generated idle distribution statistics: {stats.to_dict(orient='records')}")
 
         response = {

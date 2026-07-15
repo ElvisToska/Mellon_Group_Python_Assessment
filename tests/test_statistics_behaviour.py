@@ -139,4 +139,5 @@ def test_statistics_idle_distribution_groups_rows_with_pandas(monkeypatch):
     assert counts["Σήμερα"] == 1
     assert counts["1-7 μέρες"] == 1
     assert counts["8-30 μέρες"] == 1
+    assert counts["31-90 μέρες"] == 0
     assert counts["90+ μέρες"] == 1

@@ -16,4 +16,4 @@ COPY crontab ./crontab
 
 RUN crontab ./crontab/clear_decommission.cron
 
-CMD ["cron", "-f"]
+CMD ["sh", "-c", "printenv > /etc/environment && cron -f"]
